@@ -7,8 +7,8 @@ namespace ConsoleApplication2
     {        
         static void Main(string[] args)
         {
-            string threadsOutputFilesPath = @"C:\temp\threads";
-            string threadsFile = @"C:\temp\threads.txt";
+            string threadsOutputFilesPath = @"C:\temp\threadsUnmanagedStack";
+            string threadsFile = @"C:\temp\threadsUnmanagedStack.txt";
 
             if (args.Length > 0 && args.Length != 2)
                 throw new ArgumentException("There should be either none or two arguments");
@@ -34,33 +34,35 @@ namespace ConsoleApplication2
 
             foreach (var groupOfThreads in aggregator.GetGroupsEnumenrator())
             {
-                var newFile = File.Create($@"{threadsOutputFilesPath}\{groupOfThreads.Value.Count} {groupOfThreads.Key}.txt");
                 var threadsInGroup = groupOfThreads.Value;
-                var stremWriter = new StreamWriter(newFile);
-
-                stremWriter.WriteLine($"Details for thread {groupOfThreads.Key}, which has {threadsInGroup.Count} similiar threads");
-                stremWriter.WriteLine("Original Call Stack: ");
-                stremWriter.WriteLine("\n");
-                var key = groupOfThreads.Key;
-
-                WriteCallStackToStream(aggregator.GetThread(key), stremWriter);
-
-                stremWriter.WriteLine("\n");
-                stremWriter.WriteLine("------------------------------------------------");
-                stremWriter.WriteLine("\n");
-                foreach (var similiarThread in threadsInGroup)
+                using (var newFile = File.Create($@"{threadsOutputFilesPath}\{groupOfThreads.Value.Count} {groupOfThreads.Key}.txt"))
+                using (var streamWriter = new StreamWriter(newFile))
                 {
-                    stremWriter.WriteLine($"Call Stack For Thread {similiarThread}:");
-                    stremWriter.WriteLine("\n");
-                    WriteCallStackToStream(aggregator.GetThread(similiarThread), stremWriter);
-                    stremWriter.WriteLine("\n");
-                    stremWriter.WriteLine("------------------------------------------------");
-                    stremWriter.WriteLine("\n");
-                }
+                    streamWriter.WriteLine($"Details for thread {groupOfThreads.Key}, which has {threadsInGroup.Count - 1} similiar threads");
+                    streamWriter.WriteLine("Original Call Stack: ");
+                    streamWriter.WriteLine("\n");
+                    var key = groupOfThreads.Key;
 
-                stremWriter.Flush();
-                stremWriter.Dispose();
-                newFile.Dispose();
+                    WriteCallStackToStream(aggregator.GetThread(key), streamWriter);
+
+                    if (threadsInGroup.Count > 1)
+                    {
+                        streamWriter.WriteLine("\n");
+                        streamWriter.WriteLine("------------------------------------------------");
+                        streamWriter.WriteLine("\n");
+                        foreach (var similiarThread in threadsInGroup)
+                        {
+                            streamWriter.WriteLine($"Call Stack For Thread {similiarThread}:");
+                            streamWriter.WriteLine("\n");
+                            WriteCallStackToStream(aggregator.GetThread(similiarThread), streamWriter);
+                            streamWriter.WriteLine("\n");
+                            streamWriter.WriteLine("------------------------------------------------");
+                            streamWriter.WriteLine("\n");
+                        }
+                    }
+
+                    streamWriter.Flush();
+                }
             }
         }
 

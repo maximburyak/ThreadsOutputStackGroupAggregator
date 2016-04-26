@@ -13,7 +13,7 @@ namespace ConsoleApplication2
         public int Id { get; set; }
         public int ThreadId { get; set; }
         public List<Tuple<string, int>> CallStack = new List<Tuple<string, int>>();
-        public List<Tuple<string, int>> SortedCallStack = new List<Tuple<string, int>>();
+        public List<Tuple<string, int>> CallStackForComparison = new List<Tuple<string, int>>();
         public HashSet<int> SimiliarThreads = new HashSet<int>();
     }
 
@@ -66,12 +66,14 @@ namespace ConsoleApplication2
 
                     if (startedNewThread)
                     {
-                        if (curLine.StartsWith("Child-SP") == false)
+                        if (curLine.IndexOf("Child-SP") >=0|| curLine.IndexOf("Child SP")>=0)
                         {
+                            isProcessingCallStack = true;
+                            startedNewThread = false;
                             continue;
                         }
-                        isProcessingCallStack = true;
-                        startedNewThread = false;
+                        isProcessingCallStack = false;
+                        
                         continue;
                     }
                     if (curLine.StartsWith("OS Thread Id"))
@@ -84,8 +86,9 @@ namespace ConsoleApplication2
                         var rightParanthesis = curLine.IndexOf(')');
                         var threadId = Int32.Parse(curLine.Substring(leftParanthesis + 1, rightParanthesis - leftParanthesis - 1));
                         curThreadStack.Id = threadId;
-                        if (previousThreadStack != null)
+                        if (previousThreadStack != null && previousThreadStack.CallStack.Count >0)
                         {
+                            previousThreadStack.CallStackForComparison = previousThreadStack.CallStack.Where(x => x.Item1[0] != '['  && x.Item1[x.Item1.Length - 1]!=']').ToList();
                             _threads.Add(previousThreadStack);
                         }
                         continue;
@@ -94,12 +97,24 @@ namespace ConsoleApplication2
                         continue;
                     try
                     {
-                        var essentialStack = curLine.Substring(34);
+
+                        if (curLine.Length <= 34)
+                            continue;
+                                                
+                        Convert.ToUInt64(curLine.Substring(0, 16), 16);
+                        Convert.ToUInt64(curLine.Substring(17, 16), 16);
+                        var essentialStack = curLine.Substring(34);                        
                         curThreadStack.CallStack.Add(Tuple.Create(essentialStack, essentialStack.GetHashCode()));
                     }
                     catch
                     {
-                        _threads.Add(curThreadStack);
+                        continue;
+                        //if (curThreadStack != null && curThreadStack.CallStack.Count >0)
+                        //{
+                        //    curThreadStack.CallStackForComparison = curThreadStack.CallStack.Where(x => x.Item1[0] != '['  && x.Item1[x.Item1.Length - 1]!=']').ToList();
+                        //    _threads.Add(curThreadStack);
+                        //}
+                        //curThreadStack = null;
                     }
 
                 }
@@ -118,17 +133,17 @@ namespace ConsoleApplication2
                     if (candidateThread.Id == curThread.Id)
                         continue;
 
-                    if (Math.Abs(candidateThread.CallStack.Count - curThread.CallStack.Count) > curThread.CallStack.Count * 0.4)
+                    if (Math.Abs(candidateThread.CallStackForComparison.Count - curThread.CallStackForComparison.Count) > curThread.CallStackForComparison.Count * 0.4)
                         continue;
                     var matchingCallStackLines = 0;
                     var candidateThreadCursor = 0;
-                    foreach (var curThreadStackLine in curThread.CallStack)
+                    foreach (var curThreadStackLine in curThread.CallStackForComparison)
                     {
                         var lineFound = false;
                         var prevJ = candidateThreadCursor;
-                        for (; candidateThreadCursor < candidateThread.CallStack.Count; candidateThreadCursor++)
+                        for (; candidateThreadCursor < candidateThread.CallStackForComparison.Count; candidateThreadCursor++)
                         {
-                            var candidateThreadStackLine = candidateThread.CallStack[candidateThreadCursor];
+                            var candidateThreadStackLine = candidateThread.CallStackForComparison[candidateThreadCursor];
                             if (candidateThreadStackLine.Item2 == curThreadStackLine.Item2 &&
                                 candidateThreadStackLine.Item1.Equals(curThreadStackLine.Item1))
                             {
@@ -142,7 +157,7 @@ namespace ConsoleApplication2
                             candidateThreadCursor = prevJ;
                     }
 
-                    if (matchingCallStackLines > (candidateThread.CallStack.Count + curThread.CallStack.Count) * 0.5 * 0.8)
+                    if (matchingCallStackLines > (candidateThread.CallStackForComparison.Count + curThread.CallStackForComparison.Count) * 0.5 * 0.6)
                         curThread.SimiliarThreads.Add(candidateThread.Id);
                 }
             });
@@ -150,7 +165,7 @@ namespace ConsoleApplication2
         public void GroupStacks()
         {
             var alreadyInGroups = new HashSet<int>();
-            foreach (var thread in _threads)
+            foreach (var thread in _threads.Where(x=>x.CallStackForComparison.Count >0))
             {
                 if (alreadyInGroups.Contains(thread.Id))
                     continue;
